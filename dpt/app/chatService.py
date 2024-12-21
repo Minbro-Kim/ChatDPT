@@ -1,7 +1,8 @@
+
 from sessionService import SessionService
 from dotenv import load_dotenv
 import os
-from langchain.chat_models import ChatOpenAI
+#from langchain.chat_models import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, FewShotChatMessagePromptTemplate
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -42,11 +43,11 @@ def get_ai_response(user_message, userid):
 
 load_dotenv() 
 api_key = os.getenv("OPENAI_API_KEY")  # 환경 변수에서 API 키를 가져옴
-
+"""
 def get_llm(model='gpt-4o'):
     llm = ChatOpenAI(model=model, temperature=0,openai_api_key=api_key)
     return llm
-
+"""
 def get_dictionary_chain():
     dictionary = ["오픽 -> OPIc", "토익 -> TOEIC", "초과학기 -> 학점등록", "졸업유예 -> 선택적 수료"]
     llm = get_llm()

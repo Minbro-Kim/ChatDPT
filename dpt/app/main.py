@@ -82,6 +82,7 @@ async def query_qa(body: RequestDto):
         response_body = create_response_body(text=error_message)
         return JSONResponse(content=response_body.dict(), status_code=500)
     
+    """  
 session_service = SessionService()
    
 @app.post("/api/query/session")
@@ -100,7 +101,7 @@ async def chat_with_ai(body: RequestDto):
         error_message = f"Error occurred: {str(e)}"
         response_body = create_response_body(text=error_message)
         return JSONResponse(content=response_body.dict(), status_code=500)
-    
+"""    
     
 @app.get("/")
 def read_root():
@@ -140,5 +141,3 @@ async def upload_pdf(file: UploadFile, file_name:str):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     
-
-

@@ -37,8 +37,9 @@ class SessionService:
 
 # 백그라운드 작업으로 세션 정리
 timer = Timer(interval=60 * 60)  # 1시간마다 세션 정리
-
+"""
 @timer.job
 def clean_sessions_task():
     session_service = SessionService()
     session_service.clean_expired_sessions()
+    """
