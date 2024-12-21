@@ -4,7 +4,9 @@ from langchain_upstage import UpstageEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
+#from langchain.chat_models import ChatOpenAI
 from langchain_openai import ChatOpenAI
+
 import asyncio
 load_dotenv()
 embeddings = UpstageEmbeddings(model="solar-embedding-1-large")

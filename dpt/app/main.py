@@ -5,12 +5,31 @@ from ragService import process_documents, query_qa_system
 from fastapi.responses import JSONResponse
 from sessionService import SessionService
 from chatService import get_ai_response
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 import os
 import httpx
 import asyncio
 import time
+import logging
 
-app = FastAPI()
+
+session_service = SessionService()
+# APScheduler 설정
+scheduler = BackgroundScheduler()
+scheduler.add_job(session_service.clean_expired_sessions, IntervalTrigger(seconds=60*10))  # 10분마다간실행
+
+@asynccontextmanager
+async def lifespan(app):
+    # 애플리케이션 시작 시 실행될 코드
+    scheduler.start()
+    #logging.info("작업 실행 중!!!...")
+    yield
+    # 애플리케이션 종료 시 실행될 코드
+    scheduler.shutdown()
+    
+app = FastAPI(lifespan=lifespan)
 
 def create_response_body(**kwargs) -> ResponseDto:
     """
@@ -82,26 +101,45 @@ async def query_qa(body: RequestDto):
         response_body = create_response_body(text=error_message)
         return JSONResponse(content=response_body.dict(), status_code=500)
     
-    """  
-session_service = SessionService()
-   
+# 세션 쿼리
+
 @app.post("/api/query/session")
 async def chat_with_ai(body: RequestDto):
     try:
+        start_time = time.time()
         userid = body.userRequest.user.id
         user_message = body.userRequest.utterance
+        callback_url = body.userRequest.callbackUrl
         # 세션 생성 또는 갱신
-        session_service.update_session(userid)
+        session_service.update_session(sessionid=userid,role="user",content=user_message)
+        # 답변을 비동기적으로 받아오는 작업
+        answer_task = asyncio.create_task(get_ai_response(user_message,sessionid=userid))
+        # 4초 내에 답변을 받았는지 체크
+        elapsed_time = 0
+
+        while elapsed_time < 3: 
+            elapsed_time = time.time() - start_time
+            if answer_task.done():
+                # 4초 이내에 답변이 오면 바로 응답을 반환
+                answer = await answer_task
+                response_body = create_response_body(text=answer)
+                return response_body
+            await asyncio.sleep(0.1)  # 0.1초 대기 후 다시 체크
+
+        # 4초가 지나면 콜백 응답을 먼저 보내기
+        callback_response_body = create_callback_response_body()
+        # 콜백 응답을 비동기적으로 전송
+        asyncio.create_task(send_callback_post(answer_task, callback_url=callback_url))
+        return callback_response_body
         
-        # AI 응답 생성
-        ai_response = get_ai_response(user_message, userid)
-        response_body = create_response_body(text=ai_response)
-        return response_body
+        
     except Exception as e:
         error_message = f"Error occurred: {str(e)}"
         response_body = create_response_body(text=error_message)
         return JSONResponse(content=response_body.dict(), status_code=500)
-"""    
+ 
+    
+    
     
 @app.get("/")
 def read_root():

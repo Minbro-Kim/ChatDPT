@@ -1,56 +1,49 @@
-
 from sessionService import SessionService
-from dotenv import load_dotenv
-import os
-#from langchain.chat_models import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, FewShotChatMessagePromptTemplate
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_upstage import UpstageEmbeddings
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, FewShotChatMessagePromptTemplate
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from config import answer_examples
+from ragService import database,llm
+import asyncio
+
 
 session_service = SessionService()
-def get_ai_response(user_message, userid):
-    dictionary_chain = get_dictionary_chain()
-    rag_chain = get_rag_chain()
+
+def get_retriever():
+    retriever=database.as_retriever()
+    return retriever
+
+def get_history_retriever():
+    retriever = get_retriever()
     
-    # 두 체인을 결합하여 실행
-    tax_chain = {"input": dictionary_chain} | rag_chain
-    
-    # 세션 히스토리와 함께 AI 응답 생성
-    ai_response = tax_chain.stream(
-        {
-            "question": user_message
-        },
-        config={
-            "configurable": {
-                "session_id": userid
-            }
-        },
+    contextualize_q_system_prompt = (
+        "Given a chat history and the latest user question "
+        "Which might reference context in the chat history, "
+        "Formulate a standalone question which can be understood "
+        "Without the chat history. Do NOT answer the question, "
+        "Just reformulate it if needed and otherwise return it as is."
+        "Let"
     )
-    return ai_response
+
+    contextualize_q_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", contextualize_q_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
+    )
     
-    # 세션 기록에 응답 저장
-    session_service.update_session(userid)
-    session_service.get_session_history(userid).append({
-        "user_message": user_message,
-        "ai_response": ai_response
-    })
-    
-    return ai_response
+    history_aware_retriever = create_history_aware_retriever(
+        llm, retriever, contextualize_q_prompt
+    )
+    return history_aware_retriever
 
 
-load_dotenv() 
-api_key = os.getenv("OPENAI_API_KEY")  # 환경 변수에서 API 키를 가져옴
-"""
-def get_llm(model='gpt-4o'):
-    llm = ChatOpenAI(model=model, temperature=0,openai_api_key=api_key)
-    return llm
-"""
 def get_dictionary_chain():
     dictionary = ["오픽 -> OPIc", "토익 -> TOEIC", "초과학기 -> 학점등록", "졸업유예 -> 선택적 수료"]
-    llm = get_llm()
     prompt = ChatPromptTemplate.from_template(f"""
         사용자의 질문을 보고, 우리의 사전을 참고해서 사용자의 질문을 변경해주세요.
         만약 변경할 필요가 없다고 판단된다면, 사용자의 질문을 변경하지 않아도 됩니다.
@@ -64,9 +57,7 @@ def get_dictionary_chain():
     
     return dictionary_chain
 
-
 def get_rag_chain():
-    llm = get_llm()
     example_prompt = ChatPromptTemplate.from_messages(
         [
             ("human", "{input}"),
@@ -122,7 +113,7 @@ def get_rag_chain():
     
     conversational_rag_chain = RunnableWithMessageHistory(
         rag_chain,
-        get_session_history,
+        session_service.get_session_history,
         input_messages_key="input",
         history_messages_key="chat_history",
         output_messages_key="answer",
@@ -130,34 +121,22 @@ def get_rag_chain():
     
     return conversational_rag_chain
 
-def get_retriever():
-    embedding = UpstageEmbeddings(model="solar-embedding-1-large")
-    database = Chroma(collection_name='chroma-dongguk', persist_directory="./chroma", embedding_function=embedding)
-    retriever=database.as_retriever()
-    return retriever
-
-def get_history_retriever():
-    llm = get_llm()
-    retriever = get_retriever()
+async def get_ai_response(user_message,sessionid:str):
+    dictionary_chain = get_dictionary_chain()
     
-    contextualize_q_system_prompt = (
-        "Given a chat history and the latest user question "
-        "Which might reference context in the chat history, "
-        "Formulate a standalone question which can be understood "
-        "Without the chat history. Do NOT answer the question, "
-        "Just reformulate it if needed and otherwise return it as is."
-        "Let"
-    )
+    rag_chain = get_rag_chain()
+    tax_chain = {"input": dictionary_chain} | rag_chain
+    #print("여기까지는 무사히 되었다...")
 
-    contextualize_q_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", contextualize_q_system_prompt),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}"),
-        ]
+    ai_response =  await asyncio.to_thread(tax_chain.invoke,
+        {
+            "question": user_message
+        },
+        config={
+            "configurable": {
+                "session_id": sessionid
+            }
+        },
     )
-    
-    history_aware_retriever = create_history_aware_retriever(
-        llm, retriever, contextualize_q_prompt
-    )
-    return history_aware_retriever
+    #print(ai_response)
+    return ai_response  # 반환
