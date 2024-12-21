@@ -1,0 +1,144 @@
+from fastapi import FastAPI,UploadFile
+from schemas import RequestDto,ResponseDto,Template, Output, SimpleText,CallBackResponseDto
+from langchain_community.document_loaders import PyMuPDFLoader
+from ragService import process_documents, query_qa_system
+from fastapi.responses import JSONResponse
+from sessionService import SessionService
+from chatService import get_ai_response
+import os
+import httpx
+import asyncio
+import time
+
+app = FastAPI()
+
+def create_response_body(**kwargs) -> ResponseDto:
+    """
+    동적으로 ResponseDto를 생성하는 함수
+    """
+    text = kwargs.get("text", "잘 모르겠어요..ㅠ")
+    return ResponseDto(
+        version="2.0",
+        template=Template(
+            outputs=[Output(simpleText=SimpleText(text=text))]
+        )
+    )
+
+def create_callback_response_body() -> CallBackResponseDto:
+    """
+    동적으로 ResponseDto를 생성하는 함수
+    """
+    text = "조금만 기다려주세요~~"
+    return CallBackResponseDto(
+        version="2.0",
+        useCallback= True,
+        template=Template(
+            outputs=[Output(simpleText=SimpleText(text=text))]
+        )
+    )
+    
+# 콜백 URL로 응답 보내기
+async def send_callback_post(answer_task,callback_url: str):
+    #print(f"콜백 전송하기")
+    async with httpx.AsyncClient() as client:
+        answer = await answer_task
+        response_body = create_response_body(text=answer)
+        #print(f"콜백 전송 완료: {response_body}")
+        response = await client.post(callback_url, json=response_body.dict())
+        #print(f"콜백 전송 완료: {response.status_code}")
+   
+@app.post("/api/query/")
+async def query_qa(body: RequestDto):
+    try:
+        start_time = time.time()
+        utterance = body.userRequest.utterance
+        callback_url = body.userRequest.callbackUrl
+
+        # 답변을 비동기적으로 받아오는 작업
+        answer_task = asyncio.create_task(query_qa_system(utterance))
+
+        # 4초 내에 답변을 받았는지 체크
+        elapsed_time = 0
+
+        while elapsed_time < 3: 
+            elapsed_time = time.time() - start_time
+            if answer_task.done():
+                # 4초 이내에 답변이 오면 바로 응답을 반환
+                answer = await answer_task
+                response_body = create_response_body(text=answer)
+                return response_body
+            await asyncio.sleep(0.1)  # 0.1초 대기 후 다시 체크
+
+        # 4초가 지나면 콜백 응답을 먼저 보내기
+        callback_response_body = create_callback_response_body()
+        # 콜백 응답을 비동기적으로 전송
+        asyncio.create_task(send_callback_post(answer_task, callback_url=callback_url))
+
+        return callback_response_body
+        
+
+    except Exception as e:
+        error_message = f"Error occurred: {str(e)}"
+        response_body = create_response_body(text=error_message)
+        return JSONResponse(content=response_body.dict(), status_code=500)
+    
+session_service = SessionService()
+   
+@app.post("/api/query/session")
+async def chat_with_ai(body: RequestDto):
+    try:
+        userid = body.userRequest.user.id
+        user_message = body.userRequest.utterance
+        # 세션 생성 또는 갱신
+        session_service.update_session(userid)
+        
+        # AI 응답 생성
+        ai_response = get_ai_response(user_message, userid)
+        response_body = create_response_body(text=ai_response)
+        return response_body
+    except Exception as e:
+        error_message = f"Error occurred: {str(e)}"
+        response_body = create_response_body(text=error_message)
+        return JSONResponse(content=response_body.dict(), status_code=500)
+    
+    
+@app.get("/")
+def read_root():
+    return {"message": "된다요요요요요"}
+
+@app.post("/api/sayhello")
+def say_hello(body: RequestDto):
+    
+    response_body = create_response_body(text=f"안녕!{body}")
+    return response_body
+
+#pdf 업로드
+@app.post("/upload-pdf/")
+async def upload_pdf(file: UploadFile, file_name:str):
+    try:
+        # 업로드된 파일이 PDF인지 확인
+        if not file.filename.endswith('.pdf'):
+            return JSONResponse({"error": "Invalid file format. Only PDF files are allowed."}, status_code=400)
+
+        # 'dpt/temp' 폴더에 저장
+        temp_file_path = os.path.join("../temp", f"{file_name}.pdf")  # 파일 이름을 입력받아 경로 설정
+
+        # 파일을 해당 경로에 저장
+        with open(temp_file_path, "wb") as temp_file:
+            file_contents = await file.read()  # 업로드된 PDF 파일의 내용
+            temp_file.write(file_contents)  # 내용을 파일에 씁니다.
+
+        print("파일 저장 완료:", temp_file_path)
+
+        # PyMuPDFLoader는 파일 경로를 요구하므로 임시 파일 경로로 로드
+        docs = PyMuPDFLoader(temp_file_path).load()
+
+        print("파일 로드 완료!")
+        result = process_documents(docs=docs, file_name=file_name)
+        return JSONResponse({"message": result})
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    
+
+
