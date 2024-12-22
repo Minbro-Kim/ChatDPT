@@ -13,17 +13,21 @@ import httpx
 import asyncio
 import time
 import logging
-
+from informationService import start_crawling
 
 session_service = SessionService()
 # APScheduler 설정
 scheduler = BackgroundScheduler()
 scheduler.add_job(session_service.clean_expired_sessions, IntervalTrigger(seconds=60*10))  # 10분마다간실행
-
+scheduler.add_job(start_crawling,IntervalTrigger(seconds=60*60*24))
+# 평일 자정에 작업 실행 (월요일~금요일)
+#.add_job(start_crawling, CronTrigger(day_of_week='mon-fri', hour=0, minute=0))
+#scheduler.add_job(lambda: asyncio.create_task(start_crawling()), IntervalTrigger(seconds=30))  # 10초마다 실행
 @asynccontextmanager
 async def lifespan(app):
     # 애플리케이션 시작 시 실행될 코드
     scheduler.start()
+    #start_crawling(n=10)
     #logging.info("작업 실행 중!!!...")
     yield
     # 애플리케이션 종료 시 실행될 코드
