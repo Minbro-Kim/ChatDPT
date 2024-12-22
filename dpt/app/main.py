@@ -1,5 +1,5 @@
 from fastapi import FastAPI,UploadFile
-from schemas import RequestDto,ResponseDto,Template, Output, SimpleText,CallBackResponseDto
+from schemas import RequestDto,ResponseDto,Template, Output, SimpleText,CallBackResponseDto,BookRequestDto
 from langchain_community.document_loaders import PyMuPDFLoader
 from ragService import process_documents, query_qa_system
 from fastapi.responses import JSONResponse
@@ -14,6 +14,7 @@ import asyncio
 import time
 import logging
 from informationService import start_crawling
+from libService import fetch_book_info
 
 session_service = SessionService()
 # APScheduler 설정
@@ -46,6 +47,46 @@ def create_response_body(**kwargs) -> ResponseDto:
             outputs=[Output(simpleText=SimpleText(text=text))]
         )
     )
+
+def create_lib_response_body(books, query=str):
+    """
+    동적으로 ResponseDto를 생성하는 함수
+    """
+    response = {
+        "version": "2.0",
+        "template": {
+            "outputs": [
+                {
+                    "carousel": {
+                        "type": "listCard",
+                        "items": [
+                            {
+                                "header": {
+                                    "title": f"🔍 {query}에 대한 검색 결과입니다!"
+                                },
+                                "items": [
+                                    {
+                                        "title": book["title"],
+                                        "description": f"{book['author']}, {book['publisher']}({book['year']})\n{book['availability']}",
+                                        #"imageUrl": book["imageUrl"]
+                                    }
+                                    for book in books
+                                ],
+                                "buttons": [
+                                            {
+                                                "label": "중앙도서관 바로가기",
+                                                "action": "webLink",
+                                                "webLinkUrl": "https://lib.dongguk.edu/"
+                                            }
+                                        ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+    return response
 
 def create_callback_response_body() -> CallBackResponseDto:
     """
@@ -144,7 +185,16 @@ async def chat_with_ai(body: RequestDto):
  
     
     
-    
+@app.post("/api/search-books")
+async def search_books(body: BookRequestDto):
+    if '책이름' not in body.action.params or not body.action.params['책이름']:
+        return create_response_body(text="도서정보가 잘못됐어요😣")
+    bookname = body.action.params['책이름']
+    result = fetch_book_info(bookname)  # `bookname` 사용
+    if "error" in result:
+        return create_response_body(text="해당 정보의 도서가 없어요😣")
+    return create_lib_response_body(books=result, query=bookname)
+ 
 @app.get("/")
 def read_root():
     return {"message": "된다요요요요요"}

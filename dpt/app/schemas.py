@@ -58,3 +58,17 @@ class CallBackResponseDto(BaseModel):
     useCallback : bool
     version: str
     template: Template
+    
+class BookUserRequest(BaseModel):
+    timezone: str
+    params: dict
+    block: Block
+    utterance: str
+    lang: str | None
+    user: User
+
+class BookRequestDto(BaseModel):
+    intent: Intent
+    userRequest: BookUserRequest
+    bot: Bot
+    action: Action
