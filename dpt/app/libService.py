@@ -36,7 +36,7 @@ def fetch_book_info(query: str):
             location_list = book.select('div.holdingInfo > div.holding > p.location')
             library_details = [
                 ItemDetail(
-                    title=f"🚩 {loc.select_one('a').contents[0].strip()}",
+                    title=f"🚩 {loc.select_one('a').contents[0].strip().replace('바이오약학도서관', '약학도서관')}",
                     description= loc.select_one('span').text.strip()
                 )
                 for loc in location_list if loc.select_one('a') and loc.select_one('span')
@@ -45,11 +45,11 @@ def fetch_book_info(query: str):
                         # DTO에 맞는 데이터 변환
             item = Item(
                 imageTitle=ImageTitle(
-                    title=f"📙 {title}",
-                    description=f"📜 자료유형: {book_type}"
+                    title=f"📚 {title}",
+                    description=f"   {author}"
                 ),
                 itemList=[
-                    ItemDetail(title="✍️ 저자", description=author),
+                    ItemDetail(title="📜 자료유형", description=book_type),
                     ItemDetail(title="🖨️ 발행사항", description=f"{publisher} ({year})"),
                 ] + library_details,  # 소장정보를 itemList에 추가
                 buttons=[
