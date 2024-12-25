@@ -90,8 +90,10 @@ class BookRequestDto(BaseModel):
     bot: Bot
     action: Action
     
-
-
+class MealRequestDto(BaseModel):
+    intent: Intent
+    bot: Bot
+    action: Action
 
 class Button(BaseModel):
     label: str

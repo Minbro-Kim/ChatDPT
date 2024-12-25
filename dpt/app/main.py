@@ -1,5 +1,5 @@
 from fastapi import FastAPI,UploadFile
-from schemas import RequestDto,ResponseDto,Template, Output, SimpleText,CallBackResponseDto,Template2,BookResponseDto,BookRequestDto,QuickReplies
+from schemas import RequestDto,ResponseDto,Template, Output, SimpleText,CallBackResponseDto,Template2,BookResponseDto,BookRequestDto,MealRequestDto,QuickReplies
 from langchain_community.document_loaders import PyMuPDFLoader
 from ragService import process_documents, query_qa_system
 from fastapi.responses import JSONResponse
@@ -15,6 +15,7 @@ import time
 import logging
 from informationService import start_crawling
 from libService import fetch_book_info
+from mealService import fetch_meal_info
 
 session_service = SessionService()
 # APScheduler 설정
@@ -166,7 +167,12 @@ async def search_books(body: BookRequestDto):
     if "error" in result:
         return create_lib_response_body(text="해당 정보의 도서가 없어요😣")
     return create_lib2_response_body(books=result,query=bookname)
- 
+
+@app.post("/api/search-today-meal")
+async def search_today_meal(body: MealRequestDto):
+    result = fetch_meal_info()
+    return create_today_meal_response_body(meals=result)
+
 @app.get("/")
 def read_root():
     return {"message": "된다요요요요요"}
@@ -231,6 +237,27 @@ def create_lib2_response_body(books, query:str):
                         "messageText": "중앙도서관에서 도서 검색을 하고 싶어!",
                         "action": "message",
                         "label": "🔍 다시 검색하기"
+                    }
+                ]
+            }
+        }
+    return result
+
+def create_today_meal_response_body(meals):
+    result = {
+            "version": "2.0",
+            "template": {
+                "outputs": [
+                     {
+                        "simpleText": {
+                            "text": f"오늘의 학식 목록입니다. 😀"
+                        }
+                    },
+                    {
+                        "carousel": {
+                        "type": "itemCard",
+                        "items": meals
+                        }
                     }
                 ]
             }
