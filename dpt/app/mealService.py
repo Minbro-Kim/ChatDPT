@@ -19,7 +19,7 @@ def get_today_query():
 
     return f"&sday={timestamp_kst_midnight}&sdate={timestamp_kst_date}"
 
-def fetch_meal_info() -> List[Item]:
+def fetch_meal_info(query: str) -> List[Item]:
     # url로 soup 정보 얻기
     base_url = "https://dgucoop.dongguk.edu:44649/store/store.php?w=4&l=1"
     url = base_url + get_today_query()
@@ -44,21 +44,15 @@ def fetch_meal_info() -> List[Item]:
             # 식당 이름
             title = meal_title.select_one("td.menu_st").text.strip()
             if not title: continue
+            if title != query: continue # 사용자 입력과 맞는 정보만 fetch
 
-            if title == "상록원3층식당":
-                item_list.append(fetch_sangrok_three_info(meal_info))
-
-            if title == "상록원2층식당":
-                item_list.append(fetch_sangrok_two_info(meal_info))
-                
-            if title == "상록원1층식당(솥앤누들)":
-                item_list.append(fetch_sangrok_one_info(meal_info))
-                
-            if title == "가든쿡":
-                item_list.append(fetch_garden_cook_info(meal_info))
-                
-            if title == "누리터 식당(일산캠퍼스)":
-                item_list.append(fetch_ilsan_campus_info(meal_info))
+            match title:
+                case "상록원3층식당": item_list.append(fetch_sangrok_three_info(meal_info))
+                case "상록원2층식당": item_list.append(fetch_sangrok_two_info(meal_info))
+                case "상록원1층식당(솥앤누들)": item_list.append(fetch_sangrok_one_info(meal_info))
+                case "가든쿡": item_list.append(fetch_garden_cook_info(meal_info))
+                case "누리터 식당(일산캠퍼스)": item_list.append(fetch_ilsan_campus_info(meal_info))
+                case _: continue
             
         except AttributeError:
             continue  # 정보가 없는 항목은 스킵
@@ -296,4 +290,4 @@ def fetch_ilsan_campus_info(meal_info) -> Item:
     )
 
 if __name__ == "__main__":
-    fetch_meal_info()
+    fetch_meal_info("상록원3층식당")
